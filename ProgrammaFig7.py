@@ -3,7 +3,6 @@ import matplotlib.pyplot as plt
 from scipy.optimize import root
 from scipy.linalg import expm
 
-
 # parameters
 
 alpha = 0.1
@@ -77,11 +76,15 @@ def get_system_matrices(dEI, dIE, state='high'):
     AIE = (1 - I0) * wIE * df(SI)
     AII = -alpha - f(SI) - (1 - I0) * wII * df(SI)
 
-    # Transform to (Sigma, Delta)
-    x = 0.5 * (AEE + AEI + AIE + AII)
-    y = 0.5 * (AEE - AEI + AIE - AII)
-    z = 0.5 * (AEE + AEI - AIE - AII)
-    w = 0.5 * (AEE - AEI - AIE + AII)
+    
+    term_EI = (chiE / chiI) * AEI
+    term_IE = (chiI / chiE) * AIE
+
+
+    x = 0.5 * (AEE + term_EI + term_IE + AII)  # Sigma Sigma
+    y = 0.5 * (AEE - term_EI + term_IE - AII)  # Sigma Delta
+    z = 0.5 * (AEE + term_EI - term_IE - AII)  # Delta Sigma
+    w = 0.5 * (AEE - term_EI - term_IE + AII)  # Delta Delta
 
     A_SD = np.array([[x, y], [z, w]])
     return E0, I0, A_SD
@@ -90,10 +93,16 @@ def get_system_matrices(dEI, dIE, state='high'):
 # Simulation
 
 def run_simulation(E0, I0, pert_type='Sigma'):
+    
+    dE_val = epsilon / (2 * chiE)
+    dI_val = epsilon / (2 * chiI)
+
     if pert_type == 'Sigma':
-        state = np.array([E0 + epsilon, I0 + epsilon])
+        # Sigma = chiE*E + chiI*I. Per avere dSigma=eps, dDelta=0:
+        state = np.array([E0 + dE_val, I0 + dI_val])
     else:
-        state = np.array([E0 + epsilon, I0 - epsilon])
+        # Delta = chiE*E - chiI*I. Per avere dDelta=eps, dSigma=0:
+        state = np.array([E0 + dE_val, I0 - dI_val])
 
     history = []
     for _ in t_vals:
@@ -109,7 +118,7 @@ def run_simulation(E0, I0, pert_type='Sigma'):
 
 
 points = {
-    # 'A': ((-0.5, 0.6), 'low'),
+    'A': ((-0.5, 0.6), 'low'),
     'B': ((0.0, 2.1), 'low'),
     'C': ((-0.5, 4.0), 'low'),
     'D': ((-2.0, 1.0), 'high'),
@@ -118,8 +127,7 @@ points = {
 }
 
 
-
-plt.rcParams['figure.dpi'] = 300
+plt.rcParams['figure.dpi'] = 150 
 fig, axes = plt.subplots(3, 2, figsize=(12, 16))
 axes = axes.flatten()
 
@@ -131,13 +139,16 @@ for i, (label, ((dEI, dIE), state_type)) in enumerate(points.items()):
     E0, I0, A_SD = get_system_matrices(dEI, dIE, state_type)
 
     t_anal = np.linspace(0, t_max, 500)
+    # Calcolo analitico
     R_anal = np.array([expm(A_SD * t) for t in t_anal])
 
+    # Simulazione numerica
     R_SS, R_DS = run_simulation(E0, I0, 'Sigma')
     R_SD, R_DD = run_simulation(E0, I0, 'Delta')
 
     step = len(t_vals) // 25
-
+    
+    # Plotting
     ax.plot(t_anal, R_anal[:,0,0], 'k-', label=r'$R_{\Sigma\Sigma}$')
     ax.plot(t_vals[::step], R_SS[::step], 'ko', mfc='none')
 
